@@ -1,4 +1,5 @@
 module.exports = dragDrop
+dragDrop.toFiles = toFiles
 
 var flatten = require('flatten')
 var parallel = require('run-parallel')
@@ -65,32 +66,37 @@ function makeOnDrop (elem, ondrop, ondragleave) {
     if (ondragleave) ondragleave()
     if (elem instanceof window.Element) elem.classList.remove('drag')
     var pos = { x: e.clientX, y: e.clientY }
-    if (e.dataTransfer.items) {
-      // Handle directories in Chrome using the proprietary FileSystem API
-      var items = toArray(e.dataTransfer.items).filter(function (item) {
-        return item.kind === 'file'
-      })
-      if (items.length === 0) return
-      parallel(items.map(function (item) {
-        return function (cb) {
-          processEntry(item.webkitGetAsEntry(), cb)
-        }
-      }), function (err, results) {
-        // There should never be an error in production code. This catches permission
-        // errors with file:// in Chrome.
-        if (err) throw err
-        ondrop(flatten(results), pos)
-      })
-    } else {
-      var files = toArray(e.dataTransfer.files)
+    toFiles(e, function (files) {
       if (files.length === 0) return
-      files.forEach(function (file) {
-        file.fullPath = '/' + file.name
-      })
       ondrop(files, pos)
-    }
-
+    })
     return false
+  }
+}
+
+function toFiles (e, cb) {
+  if (e.dataTransfer.items) {
+    // Handle directories in Chrome using the proprietary FileSystem API
+    var items = toArray(e.dataTransfer.items).filter(function (item) {
+      return item.kind === 'file'
+    })
+    if (items.length === 0) return
+    parallel(items.map(function (item) {
+      return function (cb) {
+        processEntry(item.webkitGetAsEntry(), cb)
+      }
+    }), function (err, results) {
+      // There should never be an error in production code. This catches permission
+      // errors with file:// in Chrome.
+      if (err) throw err
+      cb(flatten(results))
+    })
+  } else {
+    var files = toArray(e.dataTransfer.files)
+    files.forEach(function (file) {
+      file.fullPath = '/' + file.name
+    })
+    cb(files)
   }
 }
 
